@@ -230,20 +230,27 @@ class WildDataset(Dataset):
             'reg_pedal_offset_roll': (frames_num,),
             'pedal_frame_roll': (frames_num,)}
         """
+        audio_path = self.audio_name_list[idx]
         
         try:
-            waveform, rate = torchaudio.load(self.audio_name_list[idx])
-            if waveform.shape[0]==2: # if the audio file is stereo take mean
-                waveform = waveform.mean(0) # no need keepdim (audio length), dataloader will generate the B dim
-            else:
-                waveform = waveform[0] # remove the first dim
+            waveform, rate = torchaudio.load(str(audio_path))
 
-            if rate!=SAMPLE_RATE:
-                waveform = resample(waveform, rate, SAMPLE_RATE)            
-        except:    
-            waveform = torch.tensor([[]])
-            rate = 0
-            print(f"{self.audio_name_list[idx].name} is corrupted")
+            # Convert stereo to mono if needed
+            if waveform.ndim == 2 and waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0)
+            else:
+                waveform = waveform.squeeze()
+
+            if rate != self.sample_rate:
+                waveform = resample(waveform, rate, self.sample_rate)
+
+            if waveform.numel() == 0 or waveform.abs().sum().item() == 0:
+                print(f"Waveform is empty or silent for {audio_path.name}")
+
+        except Exception as e:
+            print(f"{audio_path.name} is corrupted or unreadable: {e}")
+            # print(f"{os.path.basename(audio_path)} is corrupted or unreadable: {e}")
+            waveform = torch.tensor([])
             
 
         data_dict = {}

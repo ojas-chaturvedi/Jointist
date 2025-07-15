@@ -1,6 +1,7 @@
 from functools import partial
 import os
 from torch.utils.data import DataLoader
+from pathlib import Path
 
 import pytorch_lightning as pl
 from pytorch_lightning.plugins import DDPPlugin
@@ -49,7 +50,7 @@ def main(cfg):
     """
     assert cfg.audio_path!=None, "Please provide your audio path before continuing."
     
-    cfg.audio_path = to_absolute_path(cfg.audio_path)
+    cfg.audio_path = str(Path(cfg.audio_path).expanduser().resolve())
     
     cfg.datamodule.waveform_hdf5s_dir = to_absolute_path(os.path.join('hdf5s', 'waveforms'))   
 
@@ -72,8 +73,32 @@ def main(cfg):
             (**cfg.datamodule.args, MIDI_MAPPING=cfg.MIDI_MAPPING)
         pred_loader = DataLoader(dataset, **cfg.datamodule.dataloader_cfg.pred)
     else:
-        dataset = getattr(Data, cfg.datamodule.type)\
-            (**cfg.datamodule.args, MIDI_MAPPING=cfg.MIDI_MAPPING)
+        DatasetClass = getattr(Data, cfg.datamodule.type)
+        dataset = DatasetClass(**cfg.datamodule.args, MIDI_MAPPING=cfg.MIDI_MAPPING)
+
+        # Force override the dataset file list after full init
+        input_path = Path(cfg.audio_path)
+
+        if hasattr(dataset, 'files'):
+            dataset.files = [input_path]
+        elif hasattr(dataset, 'audio_paths'):
+            dataset.audio_paths = [input_path]
+        elif hasattr(dataset, 'audio_name_list'):
+            dataset.audio_name_list = [input_path]
+            # prevent reloading any directory listing later
+            if hasattr(dataset, '_load_audio_names'):
+                dataset._load_audio_names = lambda: None
+        elif hasattr(dataset, 'path_list'):
+            dataset.path_list = [input_path]
+        else:
+            raise RuntimeError(
+                f"Cannot override dataset audio path – unknown internal file list attribute in {cfg.datamodule.type}"
+        )
+
+        # Recheck the dataset length
+        print(f"Manually overridden dataset to use: {input_path}")
+        print(f"dataset length: {len(dataset)}")
+
         pred_loader = DataLoader(dataset, **cfg.datamodule.dataloader_cfg.pred)
 
 
@@ -180,6 +205,7 @@ def main(cfg):
         logger=logger)
 
     # Fit, evaluate, and save checkpoints.
+    jointist.cfg = cfg
     predictions = trainer.predict(jointist, pred_loader)
 #     print(predictions)
     

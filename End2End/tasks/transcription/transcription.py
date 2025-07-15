@@ -399,6 +399,7 @@ class Transcription(pl.LightningModule):
         logger.log(f"Test/Flat_notewise_w_offset", flat_f1_mean_note_w_off, on_step=False, on_epoch=True, rank_zero_only=True)
         
     def predict_step(self, batch, batch_idx, plugin_ids=None, return_roll=False):
+        cfg = self.cfg # Fetch cfg from the model instance
         
         conditions = torch.eye(self.plugin_labels_num) # assume all instruments are presented
         conditions = conditions[:-1] # remove the Empty condition
@@ -408,6 +409,7 @@ class Transcription(pl.LightningModule):
                 plugin_ids = torch.arange(self.plugin_labels_num-1)
                 conditions = conditions[plugin_ids]
             else:
+                plugin_ids = plugin_ids.to(conditions.device)
                 conditions = conditions[plugin_ids]
         elif plugin_ids==None:      
             plugin_ids = torch.arange(self.plugin_labels_num-1)
@@ -456,9 +458,16 @@ class Transcription(pl.LightningModule):
         midi_events = postprocess_probabilities_to_midi_events(output_dict, plugin_ids, self.IX_TO_NAME, self.classes_num, self.post_processor)
         # cause of memory leakage?
 
-        with open(os.path.join(self.evaluation_output_path,f"{trackname}.pkl"), 'wb') as f:
-            pickle.dump(midi_events, f)
-        midi_path = os.path.join(self.evaluation_output_path,f"{trackname}.mid")
+        # with open(os.path.join(self.evaluation_output_path,f"{trackname}.pkl"), 'wb') as f:
+        #     pickle.dump(midi_events, f)
+        # midi_path = os.path.join(self.evaluation_output_path,f"{trackname}.mid")
+        # write_midi_events_to_midi_file(midi_events, midi_path, self.instrument_type)
+        if cfg and hasattr(cfg, "output") and cfg.output:
+            midi_path = cfg.output
+        else:
+            midi_path = os.path.join(self.evaluation_output_path, f"{trackname}.mid")
+        # with open(midi_path.replace(".mid", ".pkl"), "wb") as f:
+        #     pickle.dump(midi_events, f)
         write_midi_events_to_midi_file(midi_events, midi_path, self.instrument_type)
         
         if return_roll==True:
