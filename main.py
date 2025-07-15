@@ -19,9 +19,6 @@ def main():
     if not args.input.lower().endswith(".wav"):
         raise ValueError("Only .wav files are supported for input")
 
-    # WildDataset expects a directory, not a single file
-    input_dir = os.path.dirname(os.path.abspath(args.input))
-
     # Default MIDI output path if not provided
     output_midi = args.output
     if output_midi is None:
@@ -36,9 +33,9 @@ def main():
 
     # Hydra overrides to inject paths
     overrides = [
-        f"audio_path={input_dir}",
+        f"audio_path={os.path.abspath(args.input)}",
         f"audio_ext=wav",
-        f"+output={output_midi}",  # Allow unregistered config key for output
+        f"+output={output_midi}",
     ]
 
     with initialize(config_path="End2End/config/", version_base=None):
